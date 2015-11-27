@@ -1,0 +1,295 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "mattgraham FTP Layer",
+  "Parameters" : {
+    "KeyName" : {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the bastion host",
+      "Type" : "String",
+      "MinLength" : "1",
+      "MaxLength" : "64",
+      "AllowedPattern" : "[-_ a-zA-Z0-9]*",
+      "ConstraintDescription" : "Can contain only alphanumeric characters, spaces, dashes and underscores."
+    },
+    "DNSDomain" : {
+      "Description" : "DNS domain",
+      "Type" : "String"
+    },
+
+    "StackEnvironmentFqdnPrefix" : {
+      "Description" : "DNS subdomain",
+      "Type" : "String"
+    }
+
+    , "DNSSubDomain" : {
+      "Description" : "DNS subdomain"
+      ,"Type" : "String"
+    }
+
+    , "CIDROps" : {
+      "Description" : "CIDR address for Ops team"
+      ,"Type" : "String"
+    }
+
+    , "CIDRWorld" : {
+      "Description" : "CIDR address for general access"
+      ,"Type" : "String"
+    },
+
+    "NatServerA" : {
+      "Description" : "Nat Server A Instance ID",
+      "Type" : "String"
+    },
+    "NatServerB" : {
+      "Description" : "Nat Server B Instance ID",
+      "Type" : "String"
+    },
+
+    "SubnetIdPublicA" : {
+      "Description" : "Subnet ID for Public A"
+      ,"Type" : "String"
+    },
+
+    "SubnetIdPublicB" :  {
+      "Description" : "Subnet ID for Public B"
+      ,"Type" : "String"
+    },
+
+    "VPCSubnetCIDRPrefix":{
+      "Description":"CIDR of entire subnet",
+      "Type":"String"
+    },
+
+    "FtpInstanceAMI" : {
+      "Description" : "Ftp Tier EC2 AMI",
+      "Type" : "String"
+    },
+    "FtpInstanceType" : {
+      "Description" : "Ftp Tier EC2 AMI",
+      "Type" : "String"
+    },
+
+    "VPC" : {
+      "Type" : "String",
+      "Description" : "Vpc ID of your existing VPC"
+    },
+
+    "DeleteEBSonTerminate" : {
+      "Description" : "Delete EBS Volumes on instance termination"
+      ,"Type" : "String"
+      ,"Default" : "True"
+      ,"AllowedValues" : [ "True", "False"]
+      ,"ConstraintDescription" : "True or False"
+    },
+
+    "RootDiskSizeGB" : {
+      "Description" : "Root disk size in GB"
+      ,"Type" : "String"
+      ,"AllowedPattern" : "[0-9]*"
+      ,"Default" : "20"
+      ,"ConstraintDescription" : "Must be a number greater than 1"
+    },
+    "SecurityGroupBackplane" : {
+      "Description" : "Security Group for Backplane",
+      "Type" : "String"
+    },
+    "ASGMinSize" : {
+      "Description" : "Minimum number of instances",
+      "Type" : "String",
+      "Default" : "1"
+    },
+    "ASGMaxSize" : {
+      "Description" : "Maximum number of instances",
+      "Type" : "String",
+      "Default" : "1"
+    },
+    "S3fsAccessKey" : {
+      "Description" : "S3 FS Access Key",
+      "Type" : "String"
+    },
+    "S3fsSecretKey" : {
+      "Description" : "S3 FS Secret Key",
+      "Type" : "String"
+    },
+    "S3fsBucket" : {
+      "Description" : "S3 FS Bucket Name",
+      "Type" : "String"
+    }
+
+  },
+
+
+  "Resources" : {
+
+    "SecurityGroupInternalFtp" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "Access Ftp internally",
+        "VpcId" : { "Ref":"VPC" },
+        "SecurityGroupIngress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : { "Ref" : "VPCSubnetCIDRPrefix" } },
+          { "IpProtocol" : "tcp", "FromPort" : "20", "ToPort" : "21", "CidrIp" : { "Ref" : "CIDROps" } },
+          { "IpProtocol" : "tcp", "FromPort" : "20", "ToPort" : "21", "CidrIp" : { "Ref" : "CIDRWorld" } },
+          { "IpProtocol" : "tcp", "FromPort" : "49152", "ToPort" : "57344", "CidrIp" : { "Ref" : "CIDROps" } },
+          { "IpProtocol" : "tcp", "FromPort" : "49152", "ToPort" : "57344", "CidrIp" : { "Ref" : "CIDRWorld" } },
+          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "203.10.111.38/32" },
+          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "203.10.111.39/32" },
+          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "203.10.111.130/32" },
+          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "203.10.111.131/32" }
+
+        ],
+        "SecurityGroupEgress" : [
+
+        ]
+      }
+    },
+
+    "FtpRole":{
+      "Type":"AWS::IAM::Role",
+      "Properties":{
+        "AssumeRolePolicyDocument":{
+          "Statement":[
+            {
+              "Effect":"Allow",
+              "Principal":{ "Service":[ "ec2.amazonaws.com" ] },
+              "Action":[ "sts:AssumeRole" ]
+            }
+          ]
+        },
+        "Path":"/",
+        "Policies":[
+          {
+            "PolicyName":"root",
+            "PolicyDocument":{ "Statement":[ { "Effect":"Allow", "Action":"*", "Resource":"*" } ] }
+          }
+        ]
+      }
+    },
+
+    "FtpInstanceProfile":{
+      "Type":"AWS::IAM::InstanceProfile",
+      "Properties":{
+        "Path":"/",
+        "Roles":[ { "Ref":"FtpRole" } ]
+      }
+    },
+
+    "FTPIPAddress":{
+      "Type":"AWS::EC2::EIP",
+      "Properties":{
+        "Domain":"vpc"
+      }
+    },
+
+    "FtpWaitHandler":{
+      "Type":"AWS::CloudFormation::WaitConditionHandle"
+    },
+    "FtpWaitCondition":{
+       "Type":"AWS::CloudFormation::WaitCondition",
+       "DependsOn":"FtpLaunchConfig",
+       "Properties":{
+          "Handle":{
+             "Ref":"FtpWaitHandler"
+          },
+          "Timeout":"4500"
+       }
+    },
+
+    "FtpLaunchConfig" : {
+      "Type" : "AWS::AutoScaling::LaunchConfiguration",
+      "Properties" : {
+        "ImageId" : { "Ref" :"FtpInstanceAMI"},
+        "IamInstanceProfile":{"Ref":"FtpInstanceProfile"},
+        "AssociatePublicIpAddress": "true",
+        "KeyName" : { "Ref" :"KeyName"},
+        "InstanceType" : { "Ref" : "FtpInstanceType" },
+        "BlockDeviceMappings" : [
+          {
+            "DeviceName" : "/dev/xvda",
+            "Ebs" : { "VolumeSize" : { "Ref" : "RootDiskSizeGB" }, "DeleteOnTermination" : "true"}
+          },
+          {
+            "DeviceName" : "/dev/sdb",
+            "Ebs" : { "VolumeSize" : "50", "DeleteOnTermination" : "true"}
+          },
+          {
+            "DeviceName" : "/dev/sdc",
+            "Ebs" : { "VolumeSize" : "50", "DeleteOnTermination" : "true"}
+          }
+        ],
+        "SecurityGroups" : [
+          { "Ref":"SecurityGroupBackplane" },
+          { "Ref":"SecurityGroupInternalFtp" }
+        ],
+        "UserData":{
+          "Fn::Base64":{
+            "Fn::Join":[
+              "",
+              [
+                "#!/bin/bash\n",
+                "echo \"#!/bin/bash\">/etc/environment\n",
+                "echo \"export FTP_EIP_ALLOCATION_ID=", {"Fn::GetAtt":["FTPIPAddress","AllocationId"]}, "\">>/etc/environment\n",
+                "echo \"export FTP_EIP_IP=", {"Ref":"FTPIPAddress"}, "\">>/etc/environment\n",
+                "export FTP_EIP_ALLOCATION_ID=", {"Fn::GetAtt":["FTPIPAddress","AllocationId"]}, "\n",
+                "export FTP_EIP_IP=", {"Ref":"FTPIPAddress"}, "\n",
+                "\n",
+                "/usr/sbin/ntpd -q\n",
+                "/opt/aws/bin/cfn-init -s ", { "Ref" : "AWS::StackName" }," -r FtpServer "," --region ",{ "Ref" : "AWS::Region" }, "\n",
+                "hostname ftpxx-`/opt/aws/bin/ec2-metadata -i|/bin/awk '{print $2}'`.int.",{"Ref":"DNSSubDomain"},".", {"Ref":"DNSDomain"},"\n",
+                "sed '/HOSTNAME/d' /etc/sysconfig/network > /tmp/network && mv /tmp/network /etc/sysconfig/network && echo 'HOSTNAME=ftpxx.int.",{"Ref":"DNSSubDomain"},".", {"Ref":"DNSDomain"}, "'>>/etc/sysconfig/network && /etc/init.d/network restart\n",
+                "\n",
+                "export ENV_PREFIX=", { "Ref" : "DNSSubDomain"} , "\n",
+                "echo \"export ENV_PREFIX=", { "Ref" : "DNSSubDomain"} , "\" >> /etc/environment\n",
+                "\n",
+                "echo \"", { "Ref" : "S3fsBucket" }, ":", { "Ref" : "S3fsAccessKey"}, ":", { "Ref" : "S3fsSecretKey" }, "\" > /etc/passwd-s3fs\n",
+                "\n",
+                "/opt/aws/bin/cfn-signal -e $? '",{"Ref":"FtpWaitHandler"},"'\n",
+                "aws ec2 associate-address --instance-id=`/opt/aws/bin/ec2-metadata -i |awk '{print $2}'` --allocation-id=$FTP_EIP_ALLOCATION_ID --region ap-southeast-2 && sleep 10\n"
+
+              ]
+            ]
+          }
+        }
+      }
+    },
+
+    "FtpScaleGroup" : {
+      "Type" : "AWS::AutoScaling::AutoScalingGroup",
+      "Properties" : {
+        "AvailabilityZones" : [
+          { "Fn::Select" : [ 0, { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] },
+          { "Fn::Select" : [ 1, { "Fn::GetAZs" : { "Ref" : "AWS::Region" } } ] }
+        ],
+        "LaunchConfigurationName" : { "Ref" : "FtpLaunchConfig" },
+        "MinSize" : { "Ref" : "ASGMinSize" },
+        "MaxSize" : { "Ref" : "ASGMaxSize" },
+        "Tags": [
+          {"Key": "Name","Value": {"Fn::Join": ["", ["mattgraham.", {"Ref":"DNSSubDomain"}, "-ftpxx" ]]}, "PropagateAtLaunch" : true},
+          {"Key": "Project","Value": {"Fn::Join": ["", ["mattgraham-ftp", ""]]}, "PropagateAtLaunch" : true}
+        ],
+        "VPCZoneIdentifier" : [{"Ref" : "SubnetIdPublicA"}, {"Ref" : "SubnetIdPublicB"}]
+      }
+    },
+
+    "ElbEXTHostRecord":{
+      "Type":"AWS::Route53::RecordSet",
+      "DependsOn":"FTPIPAddress",
+      "Properties":{
+        "HostedZoneName":{ "Fn::Join": ["",[ {"Ref" : "DNSSubDomain"},".",{"Ref": "DNSDomain"} ,"."]] },
+        "Comment":"DNS name for my instance.",
+        "Name":{ "Fn::Join":[ "", [ "ftp.", { "Ref":"DNSSubDomain" }, ".", { "Ref":"DNSDomain" }, "." ] ] },
+        "Type":"A",
+        "TTL":"60",
+        "ResourceRecords": [{ "Ref": "FTPIPAddress" }]
+      }
+    }
+
+  },
+
+
+  "Outputs" : {
+    "FtpDnsName":{
+      "Description":"DNS Name of ELB",
+      "Value": { "Ref": "FTPIPAddress" }
+    }
+  }
+}

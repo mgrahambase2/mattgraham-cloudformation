@@ -1,0 +1,749 @@
+{
+        "Parameters": {
+            "S3fsSecretKey": {
+                "Type": "String",
+                "Description": "S3 FS Secret Key"
+            },
+            "VPC": {
+                "Type": "String",
+                "Description": "Vpc ID of your existing VPC"
+            },
+            "S3fsBucket": {
+                "Type": "String",
+                "Description": "S3 FS Bucket Name"
+            },
+            "VPCSubnetCIDRPrefix": {
+                "Type": "String",
+                "Description": "CIDR of entire subnet"
+            },
+            "CIDRWorld": {
+                "Type": "String",
+                "Description": "CIDR address for general access"
+            },
+            "AppRouteTablePrivateB": {
+                "Type": "String",
+                "Description": "Route Table Private B"
+            },
+            "DNSSubDomain": {
+                "Type": "String",
+                "Description": "DNS subdomain"
+            },
+            "SecurityGroupBackplane": {
+                "Type": "String",
+                "Description": "Security Group for Backplane"
+            },
+            "AppInstanceAMI": {
+                "Type": "String",
+                "Description": "App Tier EC2 AMI"
+            },
+            "NatServerA": {
+                "Type": "String",
+                "Description": "Nat Server A Instance ID"
+            },
+            "KeyName": {
+                "Description": "Name of an existing EC2 KeyPair to enable SSH access to the bastion host",
+                "AllowedPattern": "[-_ a-zA-Z0-9]*",
+                "ConstraintDescription": "Can contain only alphanumeric characters, spaces, dashes and underscores.",
+                "Type": "String",
+                "MaxLength": "64",
+                "MinLength": "1"
+            },
+            "AppInstanceType": {
+                "Type": "String",
+                "Description": "App Tier EC2 AMI"
+            },
+            "ASGMinSize": {
+                "Type": "String",
+                "Description": "Minimum number of instances"
+            },
+            "S3fsAccessKey": {
+                "Type": "String",
+                "Description": "S3 FS Access Key"
+            },
+            "AppCIDRSubnetB": {
+                "Type": "String",
+                "Description": "CIDR Prefix for the App-B Subnet"
+            },
+            "SubnetIdPublicB": {
+                "Type": "String",
+                "Description": "Subnet ID for Public B"
+            },
+            "CIDROps": {
+                "Type": "String",
+                "Description": "CIDR address for Ops team"
+            },
+            "AppCIDRSubnetA": {
+                "Type": "String",
+                "Description": "CIDR Prefix for the App-A Subnet"
+            },
+            "AppRouteTablePrivateA": {
+                "Type": "String",
+                "Description": "Route Table Private A"
+            },
+            "RootDiskSizeGB": {
+                "Type": "String",
+                "Description": "Root disk size in GB",
+                "Default": "20",
+                "AllowedPattern": "[0-9]*",
+                "ConstraintDescription": "Must be a number greater than 1"
+            },
+            "DNSDomain": {
+                "Type": "String",
+                "Description": "DNS domain"
+            },
+            "ASGMaxSize": {
+                "Type": "String",
+                "Description": "Maximum number of instances"
+            },
+            "NatServerB": {
+                "Type": "String",
+                "Description": "Nat Server B Instance ID"
+            },
+            "StackEnvironmentFqdnPrefix": {
+                "Type": "String",
+                "Description": "DNS subdomain"
+            },
+            "SubnetIdPublicA": {
+                "Type": "String",
+                "Description": "Subnet ID for Public A"
+            },
+            "DeleteEBSonTerminate": {
+                "Type": "String",
+                "Description": "Delete EBS Volumes on instance termination",
+                "AllowedValues": [
+                    "True",
+                    "False"
+                ],
+                "Default": "True",
+                "ConstraintDescription": "True or False"
+            }
+        },
+        "Description": "Linear APP Layer",
+        "Outputs": {
+            "SubnetPrivateA": {
+                "Value": {
+                    "Ref": "AppPrivateSubnetA"
+                },
+                "Description": "ID for Subnet Private A"
+            },
+            "SubnetPrivateB": {
+                "Value": {
+                    "Ref": "AppPrivateSubnetB"
+                },
+                "Description": "ID for Subnet Private B"
+            }
+        },
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Resources": {
+            "SubnetRouteTableAssociationAppB": {
+                "Type": "AWS::EC2::SubnetRouteTableAssociation",
+                "Properties": {
+                    "SubnetId": {
+                        "Ref": "AppPrivateSubnetB"
+                    },
+                    "RouteTableId": {
+                        "Ref": "AppRouteTablePrivateB"
+                    }
+                }
+            },
+            "SecurityGroupAppELB": {
+                "Type": "AWS::EC2::SecurityGroup",
+                "Properties": {
+                    "VpcId": {
+                        "Ref": "VPC"
+                    },
+                    "SecurityGroupEgress": [],
+                    "SecurityGroupIngress": [
+                        {
+                            "ToPort": "80",
+                            "IpProtocol": "tcp",
+                            "CidrIp": {
+                                "Ref": "CIDROps"
+                            },
+                            "FromPort": "80"
+                        },
+                        {
+                            "ToPort": "443",
+                            "IpProtocol": "tcp",
+                            "CidrIp": {
+                                "Ref": "CIDROps"
+                            },
+                            "FromPort": "443"
+                        },
+                        {
+                            "ToPort": "80",
+                            "IpProtocol": "tcp",
+                            "CidrIp": {
+                                "Ref": "CIDRWorld"
+                            },
+                            "FromPort": "80"
+                        },
+                        {
+                            "ToPort": "443",
+                            "IpProtocol": "tcp",
+                            "CidrIp": {
+                                "Ref": "CIDRWorld"
+                            },
+                            "FromPort": "443"
+                        }
+                    ],
+                    "GroupDescription": "Access via App ELB"
+                }
+            },
+            "RouteTablePrivateB": {
+                "Type": "AWS::EC2::RouteTable",
+                "Properties": {
+                    "VpcId": {
+                        "Ref": "VPC"
+                    },
+                    "Tags": [
+                        {
+                            "Value": {
+                                "Ref": "AWS::StackId"
+                            },
+                            "Key": "Application"
+                        }
+                    ]
+                }
+            },
+            "ElbEXTHostRecord": {
+                "Type": "AWS::Route53::RecordSet",
+                "Properties": {
+                    "Comment": "DNS name for my instance.",
+                    "Name": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "app-elb.",
+                                {
+                                    "Ref": "DNSSubDomain"
+                                },
+                                ".",
+                                {
+                                    "Ref": "DNSDomain"
+                                },
+                                "."
+                            ]
+                        ]
+                    },
+                    "Type": "CNAME",
+                    "HostedZoneName": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                {
+                                    "Ref": "DNSSubDomain"
+                                },
+                                ".",
+                                {
+                                    "Ref": "DNSDomain"
+                                },
+                                "."
+                            ]
+                        ]
+                    },
+                    "TTL": "60",
+                    "ResourceRecords": [
+                        {
+                            "Fn::GetAtt": [
+                                "AppELB",
+                                "DNSName"
+                            ]
+                        }
+                    ]
+                },
+                "DependsOn": "AppELB"
+            },
+            "RouteTablePrivateA": {
+                "Type": "AWS::EC2::RouteTable",
+                "Properties": {
+                    "VpcId": {
+                        "Ref": "VPC"
+                    },
+                    "Tags": [
+                        {
+                            "Value": {
+                                "Ref": "AWS::StackId"
+                            },
+                            "Key": "Application"
+                        }
+                    ]
+                }
+            },
+            "AppPrivateSubnetA": {
+                "Type": "AWS::EC2::Subnet",
+                "Properties": {
+                    "Tags": [
+                        {
+                            "Value": {
+                                "Ref": "AWS::StackName"
+                            },
+                            "Key": "Application"
+                        },
+                        {
+                            "Value": "AppA",
+                            "Key": "Network"
+                        }
+                    ],
+                    "VpcId": {
+                        "Ref": "VPC"
+                    },
+                    "CidrBlock": {
+                        "Ref": "AppCIDRSubnetA"
+                    },
+                    "AvailabilityZone": {
+                        "Fn::Select": [
+                            "0",
+                            {
+                                "Fn::GetAZs": ""
+                            }
+                        ]
+                    }
+                }
+            },
+            "SecurityGroupInternalApp": {
+                "Type": "AWS::EC2::SecurityGroup",
+                "Properties": {
+                    "VpcId": {
+                        "Ref": "VPC"
+                    },
+                    "SecurityGroupEgress": [],
+                    "SecurityGroupIngress": [
+                        {
+                            "ToPort": "65535",
+                            "IpProtocol": "tcp",
+                            "CidrIp": {
+                                "Ref": "AppCIDRSubnetA"
+                            },
+                            "FromPort": "0"
+                        },
+                        {
+                            "ToPort": "65535",
+                            "IpProtocol": "tcp",
+                            "CidrIp": {
+                                "Ref": "AppCIDRSubnetB"
+                            },
+                            "FromPort": "0"
+                        },
+                        {
+                            "ToPort": "80",
+                            "IpProtocol": "tcp",
+                            "CidrIp": {
+                                "Ref": "VPCSubnetCIDRPrefix"
+                            },
+                            "FromPort": "80"
+                        },
+                        {
+                            "ToPort": "443",
+                            "IpProtocol": "tcp",
+                            "CidrIp": {
+                                "Ref": "VPCSubnetCIDRPrefix"
+                            },
+                            "FromPort": "443"
+                        }
+                    ],
+                    "GroupDescription": "Access App internally"
+                }
+            },
+            "AppWaitCondition": {
+                "Type": "AWS::CloudFormation::WaitCondition",
+                "Properties": {
+                    "Handle": {
+                        "Ref": "AppWaitHandler"
+                    },
+                    "Timeout": "4500"
+                },
+                "DependsOn": "AppLaunchConfig"
+            },
+            "RouteOutThroughNatA": {
+                "Type": "AWS::EC2::Route",
+                "Properties": {
+                    "InstanceId": {
+                        "Ref": "NatServerA"
+                    },
+                    "RouteTableId": {
+                        "Ref": "AppRouteTablePrivateA"
+                    },
+                    "DestinationCidrBlock": "0.0.0.0/0"
+                }
+            },
+            "AppWaitHandler": {
+                "Type": "AWS::CloudFormation::WaitConditionHandle"
+            },
+            "AppPrivateSubnetB": {
+                "Type": "AWS::EC2::Subnet",
+                "Properties": {
+                    "Tags": [
+                        {
+                            "Value": {
+                                "Ref": "AWS::StackName"
+                            },
+                            "Key": "Application"
+                        },
+                        {
+                            "Value": "AppB",
+                            "Key": "Network"
+                        }
+                    ],
+                    "VpcId": {
+                        "Ref": "VPC"
+                    },
+                    "CidrBlock": {
+                        "Ref": "AppCIDRSubnetB"
+                    },
+                    "AvailabilityZone": {
+                        "Fn::Select": [
+                            "1",
+                            {
+                                "Fn::GetAZs": ""
+                            }
+                        ]
+                    }
+                }
+            },
+            "RouteOutThroughNatB": {
+                "Type": "AWS::EC2::Route",
+                "Properties": {
+                    "InstanceId": {
+                        "Ref": "NatServerB"
+                    },
+                    "RouteTableId": {
+                        "Ref": "AppRouteTablePrivateB"
+                    },
+                    "DestinationCidrBlock": "0.0.0.0/0"
+                }
+            },
+            "AppELB": {
+                "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+                "Properties": {
+                    "Subnets": [
+                        {
+                            "Ref": "SubnetIdPublicA"
+                        },
+                        {
+                            "Ref": "SubnetIdPublicB"
+                        }
+                    ],
+                    "Listeners": [
+                        {
+                            "LoadBalancerPort": "80",
+                            "Protocol": "HTTP",
+                            "InstancePort": "80"
+                        },
+                        {
+                            "LoadBalancerPort": "443",
+                            "Protocol": "TCP",
+                            "InstancePort": "443"
+                        }
+                    ],
+                    "SecurityGroups": [
+                        {
+                            "Ref": "SecurityGroupAppELB"
+                        }
+                    ],
+                    "HealthCheck": {
+                        "UnhealthyThreshold": "5",
+                        "Interval": "30",
+                        "Target": {
+                            "Fn::Join": [
+                                "",
+                                [
+                                    "HTTP:80",
+                                    "/"
+                                ]
+                            ]
+                        },
+                        "Timeout": "20",
+                        "HealthyThreshold": "3"
+                    },
+                    "LoadBalancerName": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "-",
+                                {
+                                    "Ref": "DNSSubDomain"
+                                },
+                                "-app-elb"
+                            ]
+                        ]
+                    }
+                }
+            },
+            "AppRole": {
+                "Type": "AWS::IAM::Role",
+                "Properties": {
+                    "AssumeRolePolicyDocument": {
+                        "Statement": [
+                            {
+                                "Principal": {
+                                    "Service": [
+                                        "ec2.amazonaws.com"
+                                    ]
+                                },
+                                "Effect": "Allow",
+                                "Action": [
+                                    "sts:AssumeRole"
+                                ]
+                            }
+                        ]
+                    },
+                    "Path": "/",
+                    "Policies": [
+                        {
+                            "PolicyDocument": {
+                                "Statement": [
+                                    {
+                                        "Resource": "*",
+                                        "Effect": "Allow",
+                                        "Action": "*"
+                                    }
+                                ]
+                            },
+                            "PolicyName": "root"
+                        }
+                    ]
+                }
+            },
+            "AppScaleGroup": {
+                "Type": "AWS::AutoScaling::AutoScalingGroup",
+                "Properties": {
+                    "AvailabilityZones": [
+                        {
+                            "Fn::Select": [
+                                0,
+                                {
+                                    "Fn::GetAZs": {
+                                        "Ref": "AWS::Region"
+                                    }
+                                }
+                            ]
+                        },
+                        {
+                            "Fn::Select": [
+                                1,
+                                {
+                                    "Fn::GetAZs": {
+                                        "Ref": "AWS::Region"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    "MinSize": {
+                        "Ref": "ASGMinSize"
+                    },
+                    "LaunchConfigurationName": {
+                        "Ref": "AppLaunchConfig"
+                    },
+                    "LoadBalancerNames": [
+                        {
+                            "Ref": "AppELB"
+                        }
+                    ],
+                    "VPCZoneIdentifier": [
+                        {
+                            "Ref": "AppPrivateSubnetA"
+                        },
+                        {
+                            "Ref": "AppPrivateSubnetB"
+                        }
+                    ],
+                    "Tags": [
+                        {
+                            "Value": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        ".",
+                                        {
+                                            "Ref": "DNSSubDomain"
+                                        },
+                                        "-appxx"
+                                    ]
+                                ]
+                            },
+                            "PropagateAtLaunch": true,
+                            "Key": "Name"
+                        },
+                        {
+                            "Value": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        "-app",
+                                        ""
+                                    ]
+                                ]
+                            },
+                            "PropagateAtLaunch": true,
+                            "Key": "Project"
+                        }
+                    ],
+                    "MaxSize": {
+                        "Ref": "ASGMaxSize"
+                    }
+                }
+            },
+            "SubnetRouteTableAssociationAppA": {
+                "Type": "AWS::EC2::SubnetRouteTableAssociation",
+                "Properties": {
+                    "SubnetId": {
+                        "Ref": "AppPrivateSubnetA"
+                    },
+                    "RouteTableId": {
+                        "Ref": "AppRouteTablePrivateA"
+                    }
+                }
+            },
+            "AppLaunchConfig": {
+                "Type": "AWS::AutoScaling::LaunchConfiguration",
+                "Properties": {
+                    "ImageId": {
+                        "Ref": "AppInstanceAMI"
+                    },
+                    "IamInstanceProfile": {
+                        "Ref": "AppInstanceProfile"
+                    },
+                    "KeyName": {
+                        "Ref": "KeyName"
+                    },
+                    "UserData": {
+                        "Fn::Base64": {
+                            "Fn::Join": [
+                                "",
+                                [
+                                    "#!/bin/bash\n",
+                                    "/usr/sbin/ntpd -q\n",
+                                    "/opt/aws/bin/cfn-init -s ",
+                                    {
+                                        "Ref": "AWS::StackName"
+                                    },
+                                    " -r AppServer ",
+                                    " --region ",
+                                    {
+                                        "Ref": "AWS::Region"
+                                    },
+                                    "\n",
+                                    "hostname appxx-`/opt/aws/bin/ec2-metadata -i|/bin/awk '{print $2}'`.int.",
+                                    {
+                                        "Ref": "DNSSubDomain"
+                                    },
+                                    ".",
+                                    {
+                                        "Ref": "DNSDomain"
+                                    },
+                                    "\n",
+                                    "sed '/HOSTNAME/d' /etc/sysconfig/network > /tmp/network && mv /tmp/network /etc/sysconfig/network && echo 'HOSTNAME=appxx-`/opt/aws/bin/ec2-metadata -i|/bin/awk '{print $2}'`.int",
+                                    {
+                                        "Ref": "DNSSubDomain"
+                                    },
+                                    ".",
+                                    {
+                                        "Ref": "DNSDomain"
+                                    },
+                                    "'>>/etc/sysconfig/network && /etc/init.d/network restart\n",
+                                    "\n",
+                                    "export ENV_PREFIX=",
+                                    {
+                                        "Ref": "DNSSubDomain"
+                                    },
+                                    "\n",
+                                    "echo \"export ENV_PREFIX=",
+                                    {
+                                        "Ref": "DNSSubDomain"
+                                    },
+                                    "\" >> /etc/environment\n",
+                                    "\n",
+                                    "echo \"",
+                                    {
+                                        "Ref": "S3fsBucket"
+                                    },
+                                    ":",
+                                    {
+                                        "Ref": "S3fsAccessKey"
+                                    },
+                                    ":",
+                                    {
+                                        "Ref": "S3fsSecretKey"
+                                    },
+                                    "\" > /etc/passwd-s3fs\n",
+                                    "\n",
+                                    "echo \"127.0.0.1 appxx-`/opt/aws/bin/ec2-metadata -i|/bin/awk '{print $2}'`.int.",
+                                    {
+                                        "Ref": "DNSSubDomain"
+                                    },
+                                    {
+                                        "Ref": "DNSDomain"
+                                    },
+                                    "\">>/etc/hosts\n",
+                                    "echo \"127.0.0.1 appxx-`/opt/aws/bin/ec2-metadata -i|/bin/awk '{print $2}'`\">>/etc/hosts\n",
+                                    "\n",
+                                    "/opt/aws/bin/cfn-signal -e $? '",
+                                    {
+                                        "Ref": "AppWaitHandler"
+                                    },
+                                    "'\n"
+                                ]
+                            ]
+                        }
+                    },
+                    "BlockDeviceMappings": [
+                        {
+                            "DeviceName": "/dev/xvda",
+                            "Ebs": {
+                                "DeleteOnTermination": "true",
+                                "VolumeSize": {
+                                    "Ref": "RootDiskSizeGB"
+                                }
+                            }
+                        },
+                        {
+                            "DeviceName": "/dev/sdb",
+                            "Ebs": {
+                                "DeleteOnTermination": "true",
+                                "VolumeSize": "50"
+                            }
+                        },
+                        {
+                            "DeviceName": "/dev/sdc",
+                            "Ebs": {
+                                "DeleteOnTermination": "true",
+                                "VolumeSize": "50"
+                            }
+                        },
+                        {
+                            "DeviceName": "/dev/sdd",
+                            "Ebs": {
+                                "DeleteOnTermination": "true",
+                                "VolumeSize": "50"
+                            }
+                        }
+                    ],
+                    "InstanceType": {
+                        "Ref": "AppInstanceType"
+                    },
+                    "SecurityGroups": [
+                        {
+                            "Ref": "SecurityGroupBackplane"
+                        },
+                        {
+                            "Ref": "SecurityGroupInternalApp"
+                        }
+                    ]
+                }
+            },
+            "AppInstanceProfile": {
+                "Type": "AWS::IAM::InstanceProfile",
+                "Properties": {
+                    "Path": "/",
+                    "Roles": [
+                        {
+                            "Ref": "AppRole"
+                        }
+                    ]
+                }
+            }
+        }
+
+}

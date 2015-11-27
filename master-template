@@ -1,0 +1,316 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+  "Description" : "mattgraham Development Environment",
+
+  "Parameters" : {
+    "KeyName" : {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the bastion host",
+      "Type" : "String",
+      "MinLength": "1",
+      "MaxLength": "64",
+      "Default" : "mattgraham",
+      "AllowedPattern" : "[-_ a-zA-Z0-9]*",
+      "ConstraintDescription" : "can contain only alphanumeric characters, spaces, dashes and underscores."
+    },
+    "StackEnvironmentFqdnPrefix" : {
+      "Description" : "Stack Environment",
+      "Type" : "String",
+      "Default" : "dev"
+    },
+    "DNSDomain" : {
+       "Description" : "DNS domain",
+       "Type" : "String",
+       "Default" : "aws.mattgrahammanagedaccounts.com.au"
+    },
+    "DNSSubDomain" : {
+      "Description" : "DNS subdomain",
+      "Type" : "String",
+      "Default" : "dev"
+    },
+    "AppTierTemplate" : {
+      "Description" : "APP tier JSON template",
+      "Type" : "String",
+      "Default" : "app-AMI.json"
+    },
+    "VPCTierTemplate" : {
+      "Description" : "VPC tier JSON template",
+      "Type" : "String",
+      "Default" : "vpc-mattgraham-AMI.json"
+    },
+    "S3TierTemplate" : {
+      "Description" : "S3 tier JSON template",
+      "Type" : "String",
+      "Default" : "s3-mattgraham.json"
+    },
+    "CIDROps" : {
+      "Description" : "CIDR address for Ops team",
+      "Type" : "String",
+      "Default" : "203.214.66.230/32"
+    },
+    "CIDRWorld" : {
+      "Description" : "CIDR address for General Access",
+      "Type" : "String",
+      "Default" : "203.174.178.10/32"
+    },
+    "VPCSubnetCIDRPrefix" : {
+      "Description" : "CIDR Prefix for the VPC [x.x].0.0/16",
+      "Type" : "String",
+      "Default" : "10.71.0.0/16"
+    },
+    "SubnetCidrPublicA" : {
+      "Description" : "CIDR Prefix for the Public-A Subnet",
+      "Type" : "String",
+      "Default" : "10.71.1.0/24"
+    },
+    "SubnetCidrPublicB" : {
+      "Description" : "CIDR Prefix for the Public-B Subnet",
+      "Type" : "String",
+      "Default" : "10.71.2.0/24"
+    },
+    "SubnetAppPrivateA" : {
+      "Description" : "CIDR Prefix for the App Private-A Subnet",
+      "Type" : "String",
+      "Default" : "10.71.3.0/24"
+    },
+    "SubnetAppPrivateB" : {
+      "Description" : "CIDR Prefix for the App Private-B Subnet",
+      "Type" : "String",
+      "Default" : "10.71.4.0/24"
+    },
+    "NATInstanceType" : {
+      "Description" : "NAT Device EC2 instance type",
+      "Type" : "String",
+      "Default" : "t2.micro",
+      "AllowedValues" : [ "t2.micro", "t2.small", "t2.medium" ],
+      "ConstraintDescription" : "must be a valid EC2 instance type."
+    },
+    "AppInstanceType" : {
+      "Description" : "APP Device EC2 instance type",
+      "Type" : "String",
+      "Default" : "t2.small",
+      "AllowedValues" : [
+        "t2.micro",
+        "t2.small",
+        "t2.medium",
+        "m3.medium",
+        "m3.large",
+        "m3.xlarge",
+        "m3.2xlarge",
+        "c3.large",
+        "c3.xlarge",
+        "c3.2xlarge",
+        "c3.4xlarge",
+        "c3.8xlarge",
+        "r3.large",
+        "r3.xlarge",
+        "r3.2xlarge",
+        "r3.4xlarge",
+        "r3.8xlarge"
+      ],
+      "ConstraintDescription" : "must be a valid EC2 instance type."
+    },
+
+      "ConstraintDescription" : "must be a valid EC2 instance type."
+    },
+    "RdsDbInstanceType" : {
+      "Description" : "DB RDS instance type",
+      "Type" : "String",
+      "Default" : "db.m3.medium",
+      "AllowedValues" : [
+        "db.t2.micro",
+        "db.t2.small",
+        "db.t2.medium",
+        "db.m3.medium",
+        "db.m3.large",
+        "db.m3.xlarge",
+        "db.m3.2xlarge",
+        "db.m3.4xlarge",
+        "db.r3.large",
+        "db.r3.xlarge",
+        "db.r3.2xlarge",
+        "db.r3.4xlarge",
+        "db.r3.8xlarge"
+      ],
+      "ConstraintDescription" : "must be a valid RDS instance type."
+    },
+    "InstallBaseURL" : {
+      "Description" : "Base URL to include nested templates from",
+      "Type" : "String",
+      "Default" : "https://s3-ap-southeast-2.amazonaws.com/dev.aws.mattgrahammanagedaccounts.com.au/cloudformation"
+    },
+    "RdsDbEngine" : {
+      "Description" : "DB Engine for RDS",
+      "Type" : "String",
+      "Default" : "mysql"
+    },
+    "RdsDbEngineVersion" : {
+      "Description" : "DB Engine Version for RDS",
+      "Type" : "String",
+      "Default" : "5.6.19a"
+    },
+    "RdsDbParameterGroup" : {
+      "Description" : "DB Parameter Group for RDS",
+      "Type" : "String",
+      "Default" : "mysql5.6"
+    },
+    "RdsDbStorage" : {
+      "Description" : "DB Storage for RDS",
+      "Type" : "String",
+      "Default" : "200"
+    },
+    "RdsMultiAZ" : {
+      "Description" : "true or false for RDS Multi AZ",
+      "Type" : "String",
+      "Default" : "false"
+    },
+    "AppMinASG" : {
+      "Description" : "Minimum Instances for APP ASG",
+      "Type" : "String",
+      "Default" : "1"
+    },
+    "AppMaxASG" : {
+      "Description" : "Maximum Instances for APP ASG",
+      "Type" : "String",
+      "Default" : "1"
+    },
+    "S3fsBucket" : {
+      "Description" : "S3 FS Bucket Name",
+      "Type" : "String",
+      "Default" : "mattgraham-s3fs-dev"
+    },
+    "S3fsBucketExists" : {
+      "Description" : "Does S3FS Bucket exists? true or false",
+      "Type" : "String"
+    },
+    "NATInstanceAMI" : {
+      "Description" : "AMI ID for NAT instances",
+      "Type" : "String",
+      "Default" : "ami-35cb840f"
+    },
+    "RdsSnapshot" : {
+      "Description" : "RDS Snapshot Name",
+      "Type" : "String",
+      "Default" : "rds:lrtkexyjtg2spn-2015-09-14-18-15"
+    },
+    "AppInstanceAMI" : {
+      "Description" : "AMI ID for APP instances",
+      "Type" : "String",
+      "Default" : "ami-0b286731"
+    },
+    "FtpInstanceAMI" : {
+      "Description" : "AMI ID for FTP instances",
+      "Type" : "String",
+      "Default" : "ami-b3490589"
+    }
+  },
+
+   "Mappings" : {
+     "AMZNLinux" : {
+       "us-east-1"      : { "AMI" : "ami-08842d60" },
+       "us-west-2"      : { "AMI" : "ami-8786c6b7" },
+       "us-west-1"      : { "AMI" : "ami-cfa8a18a" },
+       "eu-west-1"      : { "AMI" : "ami-748e2903" },
+       "ap-southeast-1" : { "AMI" : "ami-d6e1c584" },
+       "ap-southeast-2" : { "AMI" : "ami-fd4724c7" },
+       "ap-northeast-1" : { "AMI" : "ami-35072834" },
+       "sa-east-1"      : { "AMI" : "ami-956cc688" }
+     }
+   },
+
+   "Resources" : {
+      "VPCStack" : {
+       "Type" : "AWS::CloudFormation::Stack",
+       "Properties" : {
+          "TemplateURL" : { "Fn::Join" : [ "", [ {"Ref" : "InstallBaseURL"},  "/" , {"Ref" : "VPCTierTemplate"} ]] } ,
+          "TimeoutInMinutes" : "10",
+          "Parameters" : {
+             "CIDROps" : { "Ref" : "CIDROps" }
+            ,"CIDRWorld" : { "Ref" : "CIDRWorld" }
+            ,"DNSDomain" : { "Ref" : "DNSDomain" }
+            ,"DNSSubDomain" : { "Ref" : "DNSSubDomain" }
+            ,"KeyName" : { "Ref" : "KeyName" }
+            ,"NATInstanceType" : { "Ref" : "NATInstanceType" }
+            ,"NATInstanceAMI" : { "Ref" : "NATInstanceAMI" }
+            ,"VPCSubnetCIDRPrefix" : { "Ref" : "VPCSubnetCIDRPrefix" }
+            ,"SubnetCidrPublicA" : { "Ref" : "SubnetCidrPublicA" }
+            ,"SubnetCidrPublicB" : { "Ref" : "SubnetCidrPublicB" }
+            ,"StackEnvironmentFqdnPrefix" : { "Ref" : "StackEnvironmentFqdnPrefix" }
+            ,"CIDROps" : { "Ref" : "CIDROps" }
+            ,"CIDRWorld" : { "Ref" : "CIDRWorld" }
+          }
+        }
+      },
+      "S3Stack" : {
+        "DependsOn" : [ "VPCStack" ],
+        "Type" : "AWS::CloudFormation::Stack",
+        "Properties" : {
+          "TemplateURL" : { "Fn::Join" :  [ "", [ {"Ref" : "InstallBaseURL"},  "/" , {"Ref" : "S3TierTemplate"} ]] },
+          "TimeoutInMinutes" : "20",
+          "Parameters" : {
+            "DNSDomain" : { "Ref" : "DNSDomain" }
+            ,"DNSSubDomain" : { "Ref" : "DNSSubDomain" }
+            ,"StackEnvironmentFqdnPrefix" : { "Ref" : "StackEnvironmentFqdnPrefix" }
+            ,"S3fsBucket" : { "Ref" : "S3fsBucket" }
+            ,"S3fsBucketExists" : { "Ref" : "S3fsBucketExists" }
+          }
+        }
+      },
+      "AppStack" : {
+        "DependsOn" : [ "VPCStack"],
+        "Type" : "AWS::CloudFormation::Stack",
+        "Properties" : {
+          "TemplateURL" : { "Fn::Join" :  [ "", [ {"Ref" : "InstallBaseURL"},  "/" , {"Ref" : "AppTierTemplate"} ]] },
+          "TimeoutInMinutes" : "20",
+          "Parameters" : {
+            "DNSDomain" : { "Ref" : "DNSDomain" }
+            ,"DNSSubDomain" : { "Ref" : "DNSSubDomain" }
+            ,"VPCSubnetCIDRPrefix" : { "Ref" : "VPCSubnetCIDRPrefix" }
+            ,"VPC" : { "Fn::GetAtt" : [ "VPCStack", "Outputs.VPCId" ] }
+            ,"AppCIDRSubnetA" : { "Ref" : "SubnetAppPrivateA" }
+            ,"AppCIDRSubnetB" : { "Ref" : "SubnetAppPrivateB" }
+            ,"SubnetIdPublicA" : { "Fn::GetAtt" : [ "VPCStack", "Outputs.SubnetPublicA" ] }
+            ,"SubnetIdPublicB" : { "Fn::GetAtt" : [ "VPCStack", "Outputs.SubnetPublicB" ] }
+            ,"AppInstanceAMI" : { "Ref" : "AppInstanceAMI" }
+            ,"AppInstanceType" : { "Ref" : "AppInstanceType" }
+            ,"AppRouteTablePrivateA" : { "Fn::GetAtt" : [ "VPCStack", "Outputs.RouteTablePrivateA" ] }
+            ,"AppRouteTablePrivateB" : { "Fn::GetAtt" : [ "VPCStack", "Outputs.RouteTablePrivateB" ] }
+            ,"CIDROps" : { "Ref" : "CIDROps" }
+            ,"CIDRWorld" : { "Ref" : "CIDRWorld" }
+            ,"NatServerA" : { "Fn::GetAtt" : [ "VPCStack", "Outputs.NatServerA" ] }
+            ,"NatServerB" : { "Fn::GetAtt" : [ "VPCStack", "Outputs.NatServerB" ] }
+            ,"KeyName" : { "Ref" : "KeyName" }
+            ,"StackEnvironmentFqdnPrefix" : { "Ref" : "StackEnvironmentFqdnPrefix" }
+            ,"SecurityGroupBackplane" : { "Fn::GetAtt" : [ "VPCStack", "Outputs.SgBackplane" ] }
+            ,"ASGMinSize" : { "Ref" : "AppMinASG" }
+            ,"ASGMaxSize" : { "Ref" : "AppMaxASG" }
+            ,"S3fsAccessKey" : { "Fn::GetAtt" : [ "S3Stack", "Outputs.AccessKey" ] }
+            ,"S3fsSecretKey" : { "Fn::GetAtt" : [ "S3Stack", "Outputs.SecretKey" ] }
+            ,"S3fsBucket" : { "Ref" : "S3fsBucket" }
+          }
+        }
+      },
+    },
+
+   "Outputs" : {
+    "VPC" : {
+      "Description" : "VPC ID of the newly created VPC",
+      "Value" :  { "Fn::GetAtt" : [ "VPCStack" , "Outputs.VPCId" ] }
+    },
+    "SubnetPublicA" : {
+      "Description" : "SubnetId of the public subnet in AZa",
+      "Value" :  { "Fn::GetAtt" : [ "VPCStack" , "Outputs.SubnetPublicA" ] }
+    },
+    "SubnetPublicB" : {
+      "Description" : "SubnetId of the public subnet in AZb",
+      "Value" :  { "Fn::GetAtt" : [ "VPCStack" , "Outputs.SubnetPublicB" ] }
+    },
+    "S3AccessKey" : {
+      "Description" : "Access Key for S3FS",
+      "Value" :  { "Fn::GetAtt" : [ "S3Stack" , "Outputs.AccessKey" ] }
+    },
+    "S3SecretAccessKey" : {
+      "Description" : "Access Key for S3FS",
+      "Value" :  { "Fn::GetAtt" : [ "S3Stack" , "Outputs.SecretKey" ] }
+    }
+  }
+}

@@ -1,0 +1,188 @@
+{
+  "AWSTemplateFormatVersion":"2010-09-09",
+  "Description":"mattgraham RDS Layer",
+  "Parameters":{
+    "StackEnvironmentFqdnPrefix":{
+      "Description":"DNS subdomain",
+      "Type":"String"
+    },
+    "DNSDomain":{
+      "Description":"DNS domain",
+      "Type":"String"
+    },
+    "DNSSubDomain":{
+      "Description":"DNS Sub Domain",
+      "Type":"String"
+    },
+    "VPC":{
+      "Description":"Vpc ID of your existing VPC",
+      "Type":"String"
+    },
+    "VPCSubnetCIDRPrefix":{
+      "Description":"CIDR of entire subnet",
+      "Type":"String"
+    },
+    "RdsCIDRSubnetA":{
+      "Description":"ID of the Private A subnet",
+      "Type":"String"
+    },
+    "RdsCIDRSubnetB":{
+      "Description":"ID of the Private B subnet",
+      "Type":"String"
+    },
+    "RdsDbEngine":{
+      "Description":"DB Engine",
+      "Type":"String"
+    },
+    "RdsDbEngineVersion":{
+      "Description":"DB Engine Version",
+      "Type":"String"
+    },
+    "RdsDbInstanceType":{
+      "Description":"DB Engine Instance Class",
+      "Type":"String"
+    },
+    "RdsDbParameterGroup":{
+      "Description":"DB Parameter Group",
+      "Type":"String"
+    },
+    "RdsDbStorage" : {
+      "Description" : "DB Storage for RDS",
+      "Type" : "String"
+    },
+    "RdsMultiAZ" : {
+      "Description" : "true or false for RDS Multi AZ",
+      "Type" : "String"
+    },
+    "RdsSnapshot" : {
+      "Description" : "RDS Snapshot name",
+      "Type" : "String"
+    }
+  },
+  "Resources": {
+    "RdsPrivateSubnetA":{
+      "Type":"AWS::EC2::Subnet",
+      "Properties":{
+        "VpcId":{ "Ref":"VPC" },
+        "CidrBlock":{ "Ref":"RdsCIDRSubnetA" },
+        "AvailabilityZone":{ "Fn::Select":[ "0", { "Fn::GetAZs":"" } ] },
+        "Tags":[
+          { "Key":"Application", "Value":{ "Ref":"AWS::StackName" } },
+          { "Key":"Network", "Value":"RdsA" }
+        ]
+      }
+    },
+    "RdsPrivateSubnetB":{
+      "Type":"AWS::EC2::Subnet",
+      "Properties":{
+        "VpcId":{ "Ref":"VPC" },
+        "CidrBlock":{ "Ref":"RdsCIDRSubnetB" },
+        "AvailabilityZone":{ "Fn::Select":[ "1", { "Fn::GetAZs":"" } ] },
+        "Tags":[
+          { "Key":"Application", "Value":{ "Ref":"AWS::StackName" } },
+          { "Key":"Network", "Value":"RdsB" }
+        ]
+      }
+    },
+    "SecurityGroupDB":{
+      "Type":"AWS::EC2::SecurityGroup",
+      "Properties":{
+        "GroupDescription":"Access Database Server",
+        "VpcId":{
+          "Ref":"VPC"
+        },
+        "SecurityGroupIngress":[
+          {
+            "IpProtocol":"tcp",
+            "FromPort":"3306",
+            "ToPort":"3306",
+            "CidrIp":{ "Ref":"VPCSubnetCIDRPrefix" }
+          }
+        ],
+        "SecurityGroupEgress":[
+        ]
+      }
+    },
+    "DBSubnetGroup":{
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties":{
+        "DBSubnetGroupDescription": "DB Subnet Group",
+        "SubnetIds":[{"Ref": "RdsPrivateSubnetA"}, {"Ref": "RdsPrivateSubnetB"}]
+      }
+    },
+    "DBParameterGroup":{
+      "Type":"AWS::RDS::DBParameterGroup",
+      "Properties":{
+        "Description": "DB Parameter Group",
+        "Family": {"Ref": "RdsDbParameterGroup"},
+        "Parameters":{
+          "lower_case_table_names" : "1",
+          "max_allowed_packet" : "104856700",
+          "log_bin_trust_function_creators" : "1"
+        }
+      }
+    },
+    "RDS":{
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "AllocatedStorage": { "Ref" : "RdsDbStorage" },
+        "AllowMajorVersionUpgrade": "false",
+        "AutoMinorVersionUpgrade": "false",
+        "BackupRetentionPeriod": "7",
+        "DBInstanceClass": {"Ref": "RdsDbInstanceType"},
+        "DBParameterGroupName": {"Ref": "DBParameterGroup"},
+        "DBSubnetGroupName" : {"Ref": "DBSubnetGroup"},
+        "Engine": {"Ref" : "RdsDbEngine"},
+        "EngineVersion": {"Ref" : "RdsDbEngineVersion"},
+        "MultiAZ": { "Ref" : "RdsMultiAZ" },
+        "VPCSecurityGroups": [{"Ref": "SecurityGroupDB" }],
+        "DBSnapshotIdentifier" : { "Ref" : "RdsSnapshot"},
+        "Iops" : "1000"
+      }
+    },
+    "RDSHostRecord":{
+      "Type":"AWS::Route53::RecordSet",
+      "Properties":{
+        "HostedZoneName": { "Fn::Join": ["",[ {"Ref" : "DNSSubDomain"},".",{"Ref": "DNSDomain"} ,"."]] },
+        "Comment":"DNS name for my instance.",
+        "Name":{
+          "Fn::Join":[
+            "",
+            [
+              "rds.int.",
+              {
+                "Ref":"DNSSubDomain"
+              },
+              ".",
+              {
+                "Ref":"DNSDomain"
+              },
+              "."
+            ]
+          ]
+        },
+        "Type":"CNAME",
+        "TTL":"60",
+        "ResourceRecords":[
+          {
+            "Fn::GetAtt":["RDS","Endpoint.Address"]
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "DatabaseHostName":{
+      "Description":"Hostname of the RDS",
+      "Value":{
+        "Ref": "RDSHostRecord"
+      }
+    },
+    "DatabaseSecurityGroup":{
+      "Description":"SecurityGroupID of the common security group",
+      "Value":{
+        "Ref":"SecurityGroupDB"
+      }
+    }
+  }
+}
