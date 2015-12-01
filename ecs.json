@@ -1,0 +1,93 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "mattgraham S3 Layer",
+  "Parameters": {
+    "StackEnvironmentFqdnPrefix" : {
+      "Description" : "Stack Environment",
+      "Type" : "String"
+    },
+    "DNSDomain": {
+      "Description": "DNS domain",
+      "Type": "String"
+    },
+    "DNSSubDomain": {
+      "Description": "DNS subdomain",
+      "Type": "String"
+    },
+    "S3fsBucket": {
+      "Description": "Name of S3 bucket for S3FS",
+      "Type": "String"
+    },
+    "S3fsBucketExists" : {
+      "Description" : "Does S3FS Bucket exists? true or false",
+      "Type" : "String"
+    }
+  },
+
+  "Conditions" : {
+    "CreateS3fsBucket" : {"Fn::Equals" : [{"Ref" : "S3fsBucketExists"}, "false"]}
+  },
+
+
+  "Resources": {
+    "mattgrahamS3fsBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Condition" : "CreateS3fsBucket",
+      "Properties": {
+        "BucketName": {
+          "Fn::Join": [
+            "",
+            [
+              {
+                "Ref": "S3fsBucket"
+              }
+            ]
+          ]
+        }
+      },
+      "DeletionPolicy" : "Retain"
+    },
+
+    "S3fsUser" : {
+      "Type": "AWS::IAM::User",
+      "Properties": {
+        "Policies": [
+          {
+            "PolicyName": "S3FSBucket",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:*",
+                  "Resource": [
+                    {"Fn::Join" : [ "", [ "arn:aws:s3:::", { "Ref" : "S3fsBucket" } ] ]},
+                    {"Fn::Join" : [ "", [ "arn:aws:s3:::", { "Ref" : "S3fsBucket" }, "/*" ] ]}
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+
+    "S3fsAccessKey" : {
+      "Type" : "AWS::IAM::AccessKey",
+      "Properties" : {
+        "UserName" : { "Ref" : "S3fsUser" }
+      }
+    }
+
+  },
+
+  "Outputs": {
+    "AccessKey" : {
+      "Value" : { "Ref" : "S3fsAccessKey" }
+    },
+    "SecretKey" : {
+      "Value" : {
+        "Fn::GetAtt" : [ "S3fsAccessKey", "SecretAccessKey" ]
+      }
+    }
+  }
+}
